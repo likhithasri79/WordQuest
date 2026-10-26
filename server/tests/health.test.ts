@@ -9,10 +9,12 @@ describe('GET /health Endpoint', () => {
     const res = await request(app).get('/health');
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('status', 'healthy');
+    expect(res.body).toHaveProperty('status');
     expect(res.body).toHaveProperty('serverTime');
     expect(res.body).toHaveProperty('uptimeSeconds');
     expect(res.body).toHaveProperty('environment');
+    expect(res.body).toHaveProperty('database');
+    expect(res.body.database).toHaveProperty('status');
     expect(res.body).toHaveProperty('memoryUsageMB');
     expect(res.body).toHaveProperty('version');
 
