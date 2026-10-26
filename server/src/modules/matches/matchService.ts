@@ -348,3 +348,89 @@ export async function getSafeMatchView(matchId: string, playerId: string): Promi
     resolvedHistory,
   };
 }
+
+/**
+ * Recovers any currently active match for an authenticated player.
+ * Applies on-the-fly passive check: if the study deadline has passed,
+ * transitions the match to AWAITING_SUBMISSIONS immediately.
+ */
+export async function getActiveMatchForPlayer(playerId: string): Promise<SafeMatchView | null> {
+  const activeStatuses = ['AWAITING_SUBMISSIONS', 'RESOLVING_ROUND', 'STUDYING'] as const;
+
+  // Find most recent match that is not completed or cancelled
+  const [activeMatch] = await db
+    .select()
+    .from(matches)
+    .where(
+      and(
+        sql`${matches.status} IN ('AWAITING_SUBMISSIONS', 'RESOLVING_ROUND', 'STUDYING')`,
+        sql`(${matches.playerAId} = ${playerId} OR ${matches.playerBId} = ${playerId})`
+      )
+    )
+    .orderBy(sql`${matches.createdAt} DESC`)
+    .limit(1);
+
+  if (!activeMatch) return null;
+
+  // Passive Check: If STUDYING and deadline has passed, advance to AWAITING_SUBMISSIONS
+  if (activeMatch.status === 'STUDYING' && activeMatch.studyEndsAt) {
+    const now = new Date();
+    if (isStudyPeriodExpired(activeMatch.studyEndsAt, now)) {
+      await db
+        .update(matches)
+        .set({
+          status: 'AWAITING_SUBMISSIONS',
+          studyEndsAt: null,
+          updatedAt: now,
+        })
+        .where(eq(matches.id, activeMatch.id));
+    }
+  }
+
+  return await getSafeMatchView(activeMatch.id, playerId);
+}
+
+/**
+ * Background reconciler job: finds overdue study matches, transitions them
+ * to AWAITING_SUBMISSIONS, and notifies connected rooms via Socket.IO.
+ * Uses SKIP LOCKED to guarantee concurrency safety across multiple workers.
+ */
+export async function reconcileOverdueStudyMatches(
+  notifyRoom?: (matchId: string, nextRound: number) => void
+): Promise<number> {
+  return await db.transaction(async (tx) => {
+    const now = new Date();
+
+    // Lock overdue study matches, skipping any already locked by other transactions
+    const overdueMatches = await tx
+      .select()
+      .from(matches)
+      .where(
+        and(
+          eq(matches.status, 'STUDYING'),
+          sql`${matches.studyEndsAt} <= ${now.toISOString()}`
+        )
+      )
+      .for('update', { skipLocked: true });
+
+    if (overdueMatches.length === 0) return 0;
+
+    for (const match of overdueMatches) {
+      await tx
+        .update(matches)
+        .set({
+          status: 'AWAITING_SUBMISSIONS',
+          studyEndsAt: null,
+          updatedAt: now,
+        })
+        .where(eq(matches.id, match.id));
+
+      if (notifyRoom) {
+        notifyRoom(match.id, match.currentRound);
+      }
+    }
+
+    return overdueMatches.length;
+  });
+}
+

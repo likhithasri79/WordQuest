@@ -6,6 +6,7 @@ import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler, AppError } from './middleware/errorHandler.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
+import { matchesRouter } from './routes/matches.js';
 
 export function createApp(): Express {
   const app = express();
@@ -32,6 +33,7 @@ export function createApp(): Express {
   // REST API Routes
   app.use('/health', healthRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/matches', matchesRouter);
 
   // 404 Not Found Catch-All
   app.use((req: Request, _res: Response, next: NextFunction) => {

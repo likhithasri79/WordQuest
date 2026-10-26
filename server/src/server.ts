@@ -1,12 +1,16 @@
 import { createServer } from 'http';
 import { createApp } from './app.js';
 import { initializeSocketIO } from './realtime/socketServer.js';
+import { startStudySweeper, stopStudySweeper } from './jobs/studySweeper.js';
 import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 
 const app = createApp();
 const httpServer = createServer(app);
 const io = initializeSocketIO(httpServer);
+
+// Start the authoritative study expiration sweeper
+startStudySweeper(io);
 
 const server = httpServer.listen(env.PORT, () => {
   logger.info('🚀 WordQuest Server started successfully', {
@@ -18,6 +22,9 @@ const server = httpServer.listen(env.PORT, () => {
 
 function gracefulShutdown(signal: string) {
   logger.info(`Received ${signal}. Initiating graceful shutdown...`);
+
+  // Stop background jobs
+  stopStudySweeper();
 
   // Stop accepting new connections
   io.close(() => {
