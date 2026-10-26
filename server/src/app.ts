@@ -5,6 +5,7 @@ import { env } from './config/env.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler, AppError } from './middleware/errorHandler.js';
 import { healthRouter } from './routes/health.js';
+import { authRouter } from './routes/auth.js';
 
 export function createApp(): Express {
   const app = express();
@@ -28,8 +29,9 @@ export function createApp(): Express {
   // Structured HTTP request logging
   app.use(requestLogger);
 
-  // Health endpoint
+  // REST API Routes
   app.use('/health', healthRouter);
+  app.use('/api/auth', authRouter);
 
   // 404 Not Found Catch-All
   app.use((req: Request, _res: Response, next: NextFunction) => {
